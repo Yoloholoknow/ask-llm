@@ -1,0 +1,11 @@
+# built binary
+client/ask
+client/ask-arm64
+client/fix
+
+# local env (contains your Tailscale IP / model choice)
+.env
+
+# ask-llm runtime files (user-specific, not repo state)
+# ~/.ask/ is outside the repo anyway, but just in case
+.ask/
