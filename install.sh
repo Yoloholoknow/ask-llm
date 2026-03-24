@@ -143,13 +143,18 @@ PROMPT_COMMAND="__ask_capture${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
 
 HOOK_ZSH='
 # ask-llm: capture last command output for `fix`
+__ask_capturing=0
 __ask_preexec() {
+  __ask_capturing=1
   exec 3>&2 2>"$HOME/.ask/.cmd_buf"
 }
 __ask_precmd() {
-  exec 2>&3 3>&- 2>/dev/null || true
-  if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
-    mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
+  if [[ $__ask_capturing -eq 1 ]]; then
+    __ask_capturing=0
+    exec 2>&3 3>&-
+    if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
+      mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
+    fi
   fi
 }
 autoload -Uz add-zsh-hook
