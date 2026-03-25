@@ -7,7 +7,7 @@ ollama serve &
 SERVER_PID=$!
 
 echo "[ask-llm] Waiting for Ollama to be ready..."
-until curl -sf http://localhost:11434/api/tags > /dev/null 2>&1; do
+until ollama list > /dev/null 2>&1; do
   sleep 1
 done
 
@@ -22,10 +22,7 @@ else
 fi
 
 echo "[ask-llm] Warming model into memory..."
-echo '{"model":"'"${MODEL}"'","prompt":"hi","stream":false}' \
-  | curl -sf -X POST http://localhost:11434/api/generate \
-    -H 'Content-Type: application/json' \
-    -d @- > /dev/null
+ollama run "${MODEL}" "hi" > /dev/null 2>&1
 echo "[ask-llm] Model warm. Ready."
 
 wait $SERVER_PID
