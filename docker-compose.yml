@@ -17,7 +17,7 @@ services:
       - OLLAMA_KEEP_ALIVE=-1
       - ASK_MODEL=${ASK_MODEL:-qwen2.5:1.5b}
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
+      test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -34,3 +34,4 @@ services:
 
 volumes:
   ollama-models:
+  
