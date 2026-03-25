@@ -22,16 +22,48 @@ if ! command -v go &>/dev/null; then
   exit 1
 fi
 
-# ── 2. Build binary ───────────────────────────────────────────────────────────
+# ── 2. Choose command name ────────────────────────────────────────────────────
+echo ""
+echo "What command name do you want? (default: ask)"
+echo -e "${DIM}  Alternatives if 'ask' is taken: ai, q, llm${RESET}"
+echo -e "${DIM}  Note: oh-my-zsh web-search plugin aliases 'ask' by default${RESET}"
+echo -n "> "
+read -r cmd_name
+cmd_name="${cmd_name:-ask}"
+cmd_name="$(echo "$cmd_name" | tr -d '[:space:]')"
+
+# validate — alphanumeric + dash/underscore only
+if ! [[ "$cmd_name" =~ ^[a-zA-Z][a-zA-Z0-9_-]*$ ]]; then
+  echo -e "${YELLOW}Invalid name — using 'ask' instead${RESET}"
+  cmd_name="ask"
+fi
+
+# check for conflicts in the current shell
+if alias "$cmd_name" &>/dev/null 2>&1; then
+  existing="$(alias "$cmd_name" 2>/dev/null)"
+  echo -e "${YELLOW}Warning: '$cmd_name' is already aliased to: $existing${RESET}"
+  echo "Enter a different name, or press Enter to keep '$cmd_name' (you'll need to remove the alias manually):"
+  echo -n "> "
+  read -r alt_name
+  alt_name="$(echo "$alt_name" | tr -d '[:space:]')"
+  if [[ -n "$alt_name" ]]; then
+    cmd_name="$alt_name"
+  fi
+fi
+
+# ── 3. Build binary ───────────────────────────────────────────────────────────
+echo ""
 echo "Building client binary..."
 cd "$REPO_DIR/client"
-go build -ldflags="-s -w" -o ask .
+go build -ldflags="-s -w" -o "$cmd_name" .
 mkdir -p "$INSTALL_DIR"
-cp ask "$INSTALL_DIR/ask"
-ln -sf "$INSTALL_DIR/ask" "$INSTALL_DIR/fix"
-echo -e "${GREEN}✓ Binary installed to $INSTALL_DIR/ask${RESET}"
+cp "$cmd_name" "$INSTALL_DIR/$cmd_name"
+rm "$cmd_name"
+ln -sf "$INSTALL_DIR/$cmd_name" "$INSTALL_DIR/fix"
+echo -e "${GREEN}✓ Installed: $INSTALL_DIR/$cmd_name${RESET}"
+echo -e "${GREEN}✓ Installed: $INSTALL_DIR/fix (symlink)${RESET}"
 
-# ── 3. Config ─────────────────────────────────────────────────────────────────
+# ── 4. Config ─────────────────────────────────────────────────────────────────
 mkdir -p "$CONFIG_DIR"
 touch "$LAST_OUTPUT"
 
@@ -52,7 +84,6 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
     host_input="${host_input:-http://localhost:11434}"
   else
     host_input="http://localhost:11434"
-    # offer to start Docker if available
     if command -v docker &>/dev/null && [[ -f "$REPO_DIR/docker-compose.yml" ]]; then
       echo ""
       echo -e "Docker detected. Start Ollama via Docker Compose now? ${DIM}(recommended)${RESET} [Y/n]"
@@ -61,7 +92,6 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
       if [[ "${start_docker:-Y}" =~ ^[Yy]$ ]]; then
         echo ""
         echo "Which model? (press Enter for default)"
-        echo -e "${DIM}  Options by RAM available:${RESET}"
         echo -e "${DIM}  ~1 GB free  → qwen2.5:0.5b${RESET}"
         echo -e "${DIM}  ~2 GB free  → qwen2.5:1.5b  (default, recommended)${RESET}"
         echo -e "${DIM}  ~3 GB free  → qwen2.5:3b${RESET}"
@@ -76,7 +106,7 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
         sed -i "s|^OLLAMA_BIND=.*|OLLAMA_BIND=127.0.0.1|" "$REPO_DIR/.env"
 
         echo ""
-        echo "Starting Ollama (this pulls the model on first run)..."
+        echo "Starting Ollama..."
         cd "$REPO_DIR"
         docker compose --env-file .env up -d
         echo -e "${GREEN}✓ Ollama started. Run: docker logs -f ask-ollama${RESET}"
@@ -90,10 +120,9 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
 
   host_input="${host_input%/}"
 
-  # pick model for config
   echo ""
   echo "Which model should the client use? (press Enter for default: qwen2.5:1.5b)"
-  echo -e "${DIM}  Must match what your Ollama server has pulled${RESET}"
+  echo -e "${DIM}  Must match a model pulled on your Ollama server${RESET}"
   echo -n "> "
   read -r client_model
   client_model="${client_model:-qwen2.5:1.5b}"
@@ -108,17 +137,18 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
 #
 # MODEL: must match a model pulled on your Ollama server.
 # Run 'ollama list' on the server to see what's available.
-# See .env.example in the repo for a full model comparison table.
+# See .env.example in the repo for the full model comparison table.
 
 OLLAMA_HOST=${host_input}
 MODEL=${client_model}
+CMD_NAME=${cmd_name}
 EOF
   echo -e "${GREEN}✓ Config written to $CONFIG_FILE${RESET}"
 else
   echo -e "${GREEN}✓ Config already exists at $CONFIG_FILE${RESET}"
 fi
 
-# ── 4. Shell hooks ────────────────────────────────────────────────────────────
+# ── 5. Shell hooks ────────────────────────────────────────────────────────────
 HOOK_BASH='
 # ask-llm: capture last command output for `fix`
 __ask_last_cmd_output=""
@@ -190,14 +220,14 @@ install_hooks() {
 install_hooks "$HOME/.bashrc" "$HOOK_BASH"
 install_hooks "$HOME/.zshrc" "$HOOK_ZSH"
 
-# ── 5. Done ───────────────────────────────────────────────────────────────────
+# ── 6. Done ───────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${GREEN}All done!${RESET}"
 echo ""
-echo "Reload your shell or run:"
+echo "Reload your shell:"
 echo -e "  ${CYAN}source ~/.zshrc${RESET}   (or ~/.bashrc)"
 echo ""
 echo "Then try:"
-echo -e "  ${CYAN}ask how to undo the last git commit${RESET}"
-echo -e "  ${CYAN}ask${RESET}   (interactive mode)"
+echo -e "  ${CYAN}${cmd_name} how to undo the last git commit${RESET}"
+echo -e "  ${CYAN}${cmd_name}${RESET}   (interactive mode)"
 echo -e "  ${CYAN}fix${RESET}   (after a command fails)"
