@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -36,8 +37,22 @@ type message struct {
 }
 
 type ollamaResponse struct {
-	Response string `json:"response"`
-	Done     bool   `json:"done"`
+	Response           string `json:"response"`
+	Done               bool   `json:"done"`
+	LoadDuration       int64  `json:"load_duration"`        // nanoseconds — model load time
+	PromptEvalDuration int64  `json:"prompt_eval_duration"` // nanoseconds — time to first token
+	EvalDuration       int64  `json:"eval_duration"`        // nanoseconds — generation time
+	EvalCount          int    `json:"eval_count"`           // number of tokens generated
+}
+
+func printStats(r ollamaResponse) {
+	if r.EvalCount == 0 || r.EvalDuration == 0 {
+		return
+	}
+	firstTokenMs := float64(r.LoadDuration+r.PromptEvalDuration) / 1e6
+	tokPerSec := float64(r.EvalCount) / (float64(r.EvalDuration) / 1e9)
+	fmt.Fprintf(os.Stdout, "%s▸ %.0fms to first token · %.1f tok/s · %d tokens%s\n",
+		ansiDim, firstTokenMs, tokPerSec, r.EvalCount, ansiReset)
 }
 
 func stream(cfg Config, system, prompt string) error {
@@ -60,8 +75,8 @@ func stream(cfg Config, system, prompt string) error {
 
 	resp, err = client.Post(url, "application/json", bytes.NewReader(body))
 	if err != nil {
-		fmt.Fprintf(colorStderr(), "%s\n", unreachableMsg(cfg.OllamaHost, err))
-		fmt.Fprintf(colorStderr(), "Retrying in 2s...\n")
+		fmt.Fprintf(os.Stderr, "%s\n", unreachableMsg(cfg.OllamaHost, err))
+		fmt.Fprintf(os.Stderr, "Retrying in 2s...\n")
 		time.Sleep(retryDelay)
 		resp, err = client.Post(url, "application/json", bytes.NewReader(body))
 		if err != nil {
@@ -76,6 +91,7 @@ func stream(cfg Config, system, prompt string) error {
 
 	printer := newStreamPrinter()
 	scanner := bufio.NewScanner(resp.Body)
+	var finalChunk ollamaResponse
 	for scanner.Scan() {
 		var chunk ollamaResponse
 		if err := json.Unmarshal(scanner.Bytes(), &chunk); err != nil {
@@ -83,11 +99,13 @@ func stream(cfg Config, system, prompt string) error {
 		}
 		printer.write(chunk.Response)
 		if chunk.Done {
+			finalChunk = chunk
 			break
 		}
 	}
 	printer.flush()
 	fmt.Println()
+	printStats(finalChunk)
 	return scanner.Err()
 }
 
@@ -97,10 +115,10 @@ func unreachableMsg(host string, err error) string {
 
 // streamPrinter handles inline code block detection and highlighting as tokens stream in
 type streamPrinter struct {
-	buf       strings.Builder
-	inCode    bool
-	langBuf   strings.Builder
-	gettingLang bool
+	buf           strings.Builder
+	inCode        bool
+	langBuf       strings.Builder
+	gettingLang   bool
 	backtickCount int
 }
 
