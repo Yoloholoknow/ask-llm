@@ -9,3 +9,6 @@ client/fix
 # ask-llm runtime files (user-specific, not repo state)
 # ~/.ask/ is outside the repo anyway, but just in case
 .ask/
+
+.claude/local/
+.claude/*.local.md

@@ -1,8 +1,9 @@
 services:
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.24.0
     container_name: ask-ollama
     restart: unless-stopped
+    mem_limit: ${OLLAMA_MEM_LIMIT:-3500m}
     ports:
       # OLLAMA_BIND controls exposure:
       #   127.0.0.1 = local only (safe default)
@@ -15,7 +16,15 @@ services:
     environment:
       - OLLAMA_HOST=0.0.0.0
       - OLLAMA_KEEP_ALIVE=-1
-      - ASK_MODEL=${ASK_MODEL:-qwen2.5:1.5b}
+      - ASK_MODEL=${ASK_MODEL:-qwen3.5:0.8b}
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_FLASH_ATTENTION=${OLLAMA_FLASH_ATTENTION:-1}
+      - OLLAMA_KV_CACHE_TYPE=${OLLAMA_KV_CACHE_TYPE:-q8_0}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 30s
@@ -34,4 +43,3 @@ services:
 
 volumes:
   ollama-models:
-  

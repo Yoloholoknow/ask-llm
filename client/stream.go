@@ -29,6 +29,7 @@ type ollamaRequest struct {
 	System   string    `json:"system,omitempty"`
 	Stream   bool      `json:"stream"`
 	Messages []message `json:"messages,omitempty"`
+	Think    *bool     `json:"think,omitempty"`
 }
 
 type message struct {
@@ -56,11 +57,13 @@ func printStats(r ollamaResponse) {
 }
 
 func stream(cfg Config, system, prompt string) error {
+	think := cfg.Think
 	payload := ollamaRequest{
 		Model:  cfg.Model,
 		Prompt: prompt,
 		System: system,
 		Stream: true,
+		Think:  &think,
 	}
 
 	body, err := json.Marshal(payload)
@@ -113,6 +116,9 @@ func unreachableMsg(host string, err error) string {
 	return fmt.Sprintf("\033[33mCould not reach %s: %v\033[0m", host, err)
 }
 
+const thinkOpen  = "<think>"
+const thinkClose = "</think>"
+
 // streamPrinter handles inline code block detection and highlighting as tokens stream in
 type streamPrinter struct {
 	buf           strings.Builder
@@ -120,15 +126,45 @@ type streamPrinter struct {
 	langBuf       strings.Builder
 	gettingLang   bool
 	backtickCount int
+	// think-block stripping
+	inThink bool
+	tagBuf  []rune
 }
 
 func newStreamPrinter() *streamPrinter {
-	return &streamPrinter{}
+	return &streamPrinter{
+		tagBuf: make([]rune, 0, 8),
+	}
 }
 
 func (p *streamPrinter) write(token string) {
 	for _, ch := range token {
-		p.processRune(ch)
+		p.filterRune(ch)
+	}
+}
+
+// filterRune strips <think>...</think> blocks before passing chars to processRune.
+// Uses a sliding-window prefix match so no buffering lag for normal text.
+func (p *streamPrinter) filterRune(ch rune) {
+	target := thinkOpen
+	if p.inThink {
+		target = thinkClose
+	}
+	p.tagBuf = append(p.tagBuf, ch)
+	for {
+		s := string(p.tagBuf)
+		if strings.HasPrefix(target, s) {
+			if s == target {
+				p.inThink = !p.inThink
+				p.tagBuf = p.tagBuf[:0]
+			}
+			return
+		}
+		// mismatch: in think mode discard; otherwise emit first buffered rune
+		if !p.inThink {
+			p.processRune(p.tagBuf[0])
+		}
+		p.tagBuf = p.tagBuf[1:]
 	}
 }
 
@@ -185,6 +221,13 @@ func (p *streamPrinter) processRune(ch rune) {
 }
 
 func (p *streamPrinter) flush() {
+	// emit any partial tag match that never completed (only if not suppressed)
+	if !p.inThink {
+		for _, ch := range p.tagBuf {
+			p.processRune(ch)
+		}
+	}
+	p.tagBuf = p.tagBuf[:0]
 	if p.inCode {
 		fmt.Print(ansiReset)
 	}
