@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-MODEL="${ASK_MODEL:-qwen2.5:1.5b}"
+MODEL="${ASK_MODEL:-qwen3.5:0.8b}"
 
 ollama serve &
 SERVER_PID=$!
