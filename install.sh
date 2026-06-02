@@ -155,15 +155,19 @@ fi
 # ── 5. Shell hooks ────────────────────────────────────────────────────────────
 HOOK_BASH='
 # ask-llm: capture last command output for `fix`
-[[ -s "$HOME/.ask/.cmd_buf" ]] && mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output" 2>/dev/null
 __ask_capture() {
   export __ask_last_exit=$?
   if [[ -n "$__ask_cmd_running" ]]; then
-    exec 2>/dev/tty
-    if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
-      command cat "$HOME/.ask/.cmd_buf" >/dev/tty
-      mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
+    if [[ -t 1 ]]; then
+      exec 2>/dev/tty
+      if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
+        command cat "$HOME/.ask/.cmd_buf" >/dev/tty
+        mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
+      else
+        rm -f "$HOME/.ask/.cmd_buf"
+      fi
     else
+      exec 2>/dev/null
       rm -f "$HOME/.ask/.cmd_buf"
     fi
     unset __ask_cmd_running
@@ -183,22 +187,26 @@ PROMPT_COMMAND="__ask_capture${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
 
 HOOK_ZSH='
 # ask-llm: capture last command output for `fix`
-(( ${+__ask_capturing} )) || __ask_capturing=0
-[[ -s "$HOME/.ask/.cmd_buf" ]] && mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output" 2>/dev/null
 __ask_preexec() {
   [[ -d "$HOME/.ask" ]] || return
   [[ -t 2 ]] || return
+  (( __ask_capturing )) && return
   __ask_capturing=1
   exec 2>"$HOME/.ask/.cmd_buf"
 }
 __ask_precmd() {
   if (( __ask_capturing )); then
     __ask_capturing=0
-    exec 2>/dev/tty
-    if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
-      command cat "$HOME/.ask/.cmd_buf" >/dev/tty
-      mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
+    if [[ -t 1 ]]; then
+      exec 2>/dev/tty
+      if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
+        command cat "$HOME/.ask/.cmd_buf" >/dev/tty
+        mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
+      else
+        rm -f "$HOME/.ask/.cmd_buf"
+      fi
     else
+      exec 2>/dev/null
       rm -f "$HOME/.ask/.cmd_buf"
     fi
   fi
@@ -206,7 +214,6 @@ __ask_precmd() {
 autoload -Uz add-zsh-hook
 add-zsh-hook preexec __ask_preexec
 add-zsh-hook precmd __ask_precmd
-preexec_functions=(${preexec_functions[@]:#__ask_preexec} __ask_preexec)
 '
 
 PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
@@ -216,26 +223,26 @@ END_MARKER='# end ask-llm hooks'
 install_hooks() {
   local rc_file="$1"
   local hook="$2"
+  local replaced=0
 
   if [[ ! -f "$rc_file" ]]; then
     return
   fi
 
   # Strip existing managed block so reinstall always upgrades to the latest hooks.
-  # Removes from the MARKER line through (and including) the PATH_LINE.
   if grep -q "$MARKER" "$rc_file" 2>/dev/null; then
     local tmp
     tmp="$(mktemp)"
     awk -v marker="$MARKER" -v end_marker="$END_MARKER" -v path_line="$PATH_LINE" '
       /^[[:space:]]*$/ && found { next }
       $0 == marker { found=1; next }
-      found && index($0, path_line) { found=0; next }
+      found && $0 == path_line { found=0; next }
       $0 == end_marker { found=0; next }
       found { next }
       { print }
     ' "$rc_file" > "$tmp"
     mv "$tmp" "$rc_file"
-    echo -e "${YELLOW}↻ Replaced existing hooks in $rc_file${RESET}"
+    replaced=1
   fi
 
   {
@@ -245,7 +252,11 @@ install_hooks() {
     echo "$PATH_LINE"
     echo "$END_MARKER"
   } >> "$rc_file"
-  echo -e "${GREEN}✓ Hooks added to $rc_file${RESET}"
+  if (( replaced )); then
+    echo -e "${GREEN}✓ Hooks updated in $rc_file${RESET}"
+  else
+    echo -e "${GREEN}✓ Hooks added to $rc_file${RESET}"
+  fi
 }
 
 install_hooks "$HOME/.bashrc" "$HOOK_BASH"
