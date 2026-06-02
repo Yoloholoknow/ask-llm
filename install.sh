@@ -158,16 +158,11 @@ HOOK_BASH='
 __ask_capture() {
   export __ask_last_exit=$?
   if [[ -n "$__ask_cmd_running" ]]; then
-    if [[ -t 1 ]]; then
-      exec 2>/dev/tty
-      if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
-        command cat "$HOME/.ask/.cmd_buf" >/dev/tty
-        mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
-      else
-        rm -f "$HOME/.ask/.cmd_buf"
-      fi
+    exec 2>/dev/tty
+    if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
+      command cat "$HOME/.ask/.cmd_buf" >/dev/tty
+      mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
     else
-      exec 2>/dev/null
       rm -f "$HOME/.ask/.cmd_buf"
     fi
     unset __ask_cmd_running
@@ -197,16 +192,11 @@ __ask_preexec() {
 __ask_precmd() {
   if (( __ask_capturing )); then
     __ask_capturing=0
-    if [[ -t 1 ]]; then
-      exec 2>/dev/tty
-      if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
-        command cat "$HOME/.ask/.cmd_buf" >/dev/tty
-        mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
-      else
-        rm -f "$HOME/.ask/.cmd_buf"
-      fi
+    exec 2>/dev/tty
+    if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
+      command cat "$HOME/.ask/.cmd_buf" >/dev/tty
+      mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
     else
-      exec 2>/dev/null
       rm -f "$HOME/.ask/.cmd_buf"
     fi
   fi
@@ -246,8 +236,8 @@ install_hooks() {
   fi
 
   {
-    echo ""
     echo "$MARKER"
+    echo ""
     echo "$hook"
     echo "$PATH_LINE"
     echo "$END_MARKER"
