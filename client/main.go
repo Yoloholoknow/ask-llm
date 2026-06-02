@@ -32,7 +32,7 @@ func main() {
 	}
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "\033[31m%v\033[0m\n", err)
+		fmt.Fprintf(os.Stdout, "\033[31m%v\033[0m\n", err)
 		os.Exit(1)
 	}
 }

@@ -42,6 +42,8 @@ func runFix(cfg Config) error {
 		content = strings.Join(lines, "\n")
 	}
 
-	fmt.Fprintf(os.Stderr, "%sDiagnosing last command output...%s\n\n", ansiDim, ansiReset)
+	fmt.Fprintf(os.Stdout, "%s─── captured stderr ───%s\n%s\n%s──────────────────────%s\n\n",
+		ansiDim, ansiReset, content, ansiDim, ansiReset)
+	fmt.Fprintf(os.Stdout, "%sDiagnosing last command output...%s\n\n", ansiDim, ansiReset)
 	return stream(cfg, fixSystem, "Here is the terminal output to diagnose:\n\n"+content)
 }

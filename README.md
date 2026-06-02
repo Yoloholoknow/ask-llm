@@ -379,16 +379,9 @@ your-command 2>&1 | tee ~/.ask/last_output; fix
 
 **Fish shell**
 
-Add manually to `~/.config/fish/config.fish`:
+Fish doesn't support the `exec 2> >(tee ...)` process-substitution pattern needed for
+live stderr tee. Auto-capture isn't available. Use manual capture per command instead:
 
 ```fish
-function __ask_preexec --on-event fish_preexec
-    exec 3>&2 2>"$HOME/.ask/.cmd_buf"
-end
-function __ask_precmd --on-event fish_postexec
-    exec 2>&3 3>&- 2>/dev/null
-    if test -s "$HOME/.ask/.cmd_buf"
-        mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
-    end
-end
+your-command 2>&1 | tee ~/.ask/last_output; fix
 ```
