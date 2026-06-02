@@ -160,16 +160,17 @@ __ask_capture() {
   export __ask_last_exit=$?
   if [[ -n "$__ask_cmd_running" ]]; then
     exec 2>/dev/tty
-    [[ -s "$HOME/.ask/.cmd_buf" ]] || rm -f "$HOME/.ask/.cmd_buf"
+    if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
+      command cat "$HOME/.ask/.cmd_buf" >/dev/tty
+      mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
+    else
+      rm -f "$HOME/.ask/.cmd_buf"
+    fi
     unset __ask_cmd_running
   fi
 }
 __ask_preexec() {
   [[ -d "$HOME/.ask" ]] || return
-  if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
-    command cat "$HOME/.ask/.cmd_buf" >/dev/tty
-    mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
-  fi
   [[ -t 2 ]] || return
   [[ "$BASH_COMMAND" == "__ask_capture" ]] && return
   [[ -n "$__ask_cmd_running" ]] && return
@@ -191,9 +192,9 @@ __ask_preexec() {
   exec 2>"$HOME/.ask/.cmd_buf"
 }
 __ask_precmd() {
-  exec 2>/dev/tty
   if (( __ask_capturing )); then
     __ask_capturing=0
+    exec 2>/dev/tty
     if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
       command cat "$HOME/.ask/.cmd_buf" >/dev/tty
       mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
@@ -210,6 +211,7 @@ preexec_functions=(${preexec_functions[@]:#__ask_preexec} __ask_preexec)
 
 PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
 MARKER='# ask-llm hooks'
+END_MARKER='# end ask-llm hooks'
 
 install_hooks() {
   local rc_file="$1"
@@ -224,10 +226,11 @@ install_hooks() {
   if grep -q "$MARKER" "$rc_file" 2>/dev/null; then
     local tmp
     tmp="$(mktemp)"
-    awk -v marker="$MARKER" -v path_line="$PATH_LINE" '
+    awk -v marker="$MARKER" -v end_marker="$END_MARKER" -v path_line="$PATH_LINE" '
       /^[[:space:]]*$/ && found { next }
       $0 == marker { found=1; next }
       found && index($0, path_line) { found=0; next }
+      $0 == end_marker { found=0; next }
       found { next }
       { print }
     ' "$rc_file" > "$tmp"
@@ -240,6 +243,7 @@ install_hooks() {
     echo "$MARKER"
     echo "$hook"
     echo "$PATH_LINE"
+    echo "$END_MARKER"
   } >> "$rc_file"
   echo -e "${GREEN}✓ Hooks added to $rc_file${RESET}"
 }
