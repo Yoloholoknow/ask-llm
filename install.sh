@@ -154,6 +154,8 @@ HOOK_BASH='
 __ask_preexec() {
   [[ -d "$HOME/.ask" ]] || return
   [[ "$BASH_COMMAND" == __ask_precmd* ]] && return
+  [[ "$BASH_COMMAND" == fix || "$BASH_COMMAND" == "fix "* ]] && return
+  [[ "$BASH_COMMAND" == ask || "$BASH_COMMAND" == "ask "* ]] && return
   [[ -n "$__ask_seen" ]] && return
   __ask_seen=1
   echo "$BASH_COMMAND" > "$HOME/.ask/last_command"
@@ -173,6 +175,8 @@ HOOK_ZSH='
 # ask-llm: record last command metadata for `fix`
 __ask_preexec() {
   [[ -d "$HOME/.ask" ]] || return
+  [[ "$1" == fix || "$1" == "fix "* ]] && return
+  [[ "$1" == ask || "$1" == "ask "* ]] && return
   print -r -- "$1"   > "$HOME/.ask/last_command"
   print -r -- "$PWD" > "$HOME/.ask/last_cwd"
 }
