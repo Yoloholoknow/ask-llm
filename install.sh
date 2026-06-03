@@ -79,16 +79,20 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
       if [[ "${start_docker:-Y}" =~ ^[Yy]$ ]]; then
         echo ""
         echo "Which model? (press Enter for default)"
-        echo -e "${DIM}  ~1.5 GB free → qwen3.5:0.8b          (default — fast + Qwen quality)${RESET}"
+        echo -e "${DIM}  Pi 4 (4 GB) — CPU inference, ~3–8 tok/s for 1B models:${RESET}"
+        echo -e "${DIM}  ~1.2 GB free → gemma3:1b              (recommended — best quality/speed at 1B)${RESET}"
+        echo -e "${DIM}  ~1.4 GB free → qwen3.5:0.8b           (alternative; supports thinking mode)${RESET}"
+        echo -e "${DIM}  ~0.9 GB free → llama3.2:1b            (strong instruction following)${RESET}"
+        echo -e "${DIM}${RESET}"
+        echo -e "${DIM}  More RAM / faster hardware:${RESET}"
         echo -e "${DIM}  ~3 GB free   → qwen3.5:2b-q4_K_M     (better quality, still fits 4 GB Pi)${RESET}"
         echo -e "${DIM}  ~3 GB free   → llama3.2:3b            (instruct, strong general knowledge)${RESET}"
-        echo -e "${DIM}  ~3 GB free   → granite4.1:3b          (instruct, tools + RAG, non-Qwen)${RESET}"
         echo -e "${DIM}  ~4 GB free   → qwen3.5:4b${RESET}"
         echo -e "${DIM}  ~8 GB free   → qwen3.5:9b             (GPU recommended)${RESET}"
-        echo -e "${DIM}  See .env.example for the full table${RESET}"
+        echo -e "${DIM}  See .env.example for full table with Pi 4 tok/s estimates${RESET}"
         echo -n "> "
         read -r model_input
-        model_input="${model_input:-qwen3.5:0.8b}"
+        model_input="${model_input:-gemma3:1b}"
 
         cp "$REPO_DIR/.env.example" "$REPO_DIR/.env" 2>/dev/null || true
         sed -i "s|^ASK_MODEL=.*|ASK_MODEL=${model_input}|" "$REPO_DIR/.env"
@@ -110,11 +114,11 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
   host_input="${host_input%/}"
 
   echo ""
-  echo "Which model should the client use? (press Enter for default: qwen3.5:0.8b)"
+  echo "Which model should the client use? (press Enter for default: gemma3:1b)"
   echo -e "${DIM}  Must match a model pulled on your Ollama server${RESET}"
   echo -n "> "
   read -r client_model
-  client_model="${client_model:-qwen3.5:0.8b}"
+  client_model="${client_model:-gemma3:1b}"
 
   cat > "$CONFIG_FILE" <<EOF
 # ask-llm configuration
@@ -126,9 +130,15 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
 #
 # MODEL: must match a model pulled on your Ollama server.
 # Run 'ollama list' on the server to see what's available.
-# See .env.example in the repo for the full model comparison table.
+# See .env.example in the repo for the full table with Pi 4 tok/s estimates.
+#
+# Pi 4 recommended: gemma3:1b or llama3.2:1b (~4–6 tok/s, good quality)
+# qwen3.5:0.8b is an alternative if you want thinking mode support.
 #
 # THINK=false  # set to true to enable reasoning trace on thinking models (qwen3.5 etc.)
+#
+# NUM_CTX=1024  # context window size; 1024 is the default and halves bandwidth
+#               # vs Ollama's 2048 default — meaningful speed gain on Pi 4 CPU
 
 OLLAMA_HOST=${host_input}
 MODEL=${client_model}

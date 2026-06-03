@@ -30,6 +30,7 @@ type ollamaRequest struct {
 	Stream   bool      `json:"stream"`
 	Messages []message `json:"messages,omitempty"`
 	Think    *bool     `json:"think,omitempty"`
+	NumCtx   int       `json:"num_ctx,omitempty"`
 }
 
 type message struct {
@@ -64,6 +65,7 @@ func stream(cfg Config, system, prompt string) error {
 		System: system,
 		Stream: true,
 		Think:  &think,
+		NumCtx: cfg.NumCtx,
 	}
 
 	body, err := json.Marshal(payload)
