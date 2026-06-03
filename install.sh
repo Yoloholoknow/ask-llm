@@ -168,6 +168,7 @@ __ask_capture() {
   export __ask_last_exit=$?
   if [[ -n "$__ask_cmd_running" ]]; then
     exec 2>/dev/tty
+    wait "$__ask_tee_pid" 2>/dev/null; unset __ask_tee_pid
     if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
       mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
     else
@@ -183,6 +184,7 @@ __ask_preexec() {
   [[ -n "$__ask_cmd_running" ]] && return
   __ask_cmd_running=1
   exec 2> >(tee "$HOME/.ask/.cmd_buf" >/dev/tty)
+  __ask_tee_pid=$!
 }
 trap __ask_preexec DEBUG
 PROMPT_COMMAND="__ask_capture${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
@@ -196,11 +198,13 @@ __ask_preexec() {
   (( __ask_capturing )) && return
   __ask_capturing=1
   exec 2> >(tee "$HOME/.ask/.cmd_buf" >/dev/tty)
+  __ask_tee_pid=$!
 }
 __ask_precmd() {
   if (( __ask_capturing )); then
     __ask_capturing=0
     exec 2>/dev/tty
+    wait "$__ask_tee_pid" 2>/dev/null; unset __ask_tee_pid
     if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
       mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
     else
