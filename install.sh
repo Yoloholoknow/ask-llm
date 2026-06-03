@@ -39,6 +39,7 @@ echo -e "${GREEN}✓ Installed: $INSTALL_DIR/fix (symlink)${RESET}"
 
 # ── 4. Config ─────────────────────────────────────────────────────────────────
 mkdir -p "$CONFIG_DIR"
+rm -f "$LAST_OUTPUT"
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
   echo ""
@@ -158,14 +159,19 @@ __ask_preexec() {
   [[ "$BASH_COMMAND" == ask || "$BASH_COMMAND" == "ask "* ]] && return
   [[ -n "$__ask_seen" ]] && return
   __ask_seen=1
-  echo "$BASH_COMMAND" > "$HOME/.ask/last_command"
-  echo "$PWD"          > "$HOME/.ask/last_cwd"
+  __ask_cwd="$PWD"
 }
 __ask_precmd() {
   local _ec=$?
   [[ -d "$HOME/.ask" ]] || return
-  [[ -n "$__ask_seen" ]] && echo "$_ec" > "$HOME/.ask/last_exit"
-  unset __ask_seen
+  if [[ -n "$__ask_seen" ]]; then
+    local _cmd
+    _cmd=$(HISTTIMEFORMAT="" history 1 | sed "s/^[[:space:]]*[0-9]*[[:space:]]*//")
+    echo "$_cmd"       > "$HOME/.ask/last_command"
+    echo "$__ask_cwd"  > "$HOME/.ask/last_cwd"
+    echo "$_ec"        > "$HOME/.ask/last_exit"
+  fi
+  unset __ask_seen __ask_cwd
 }
 trap __ask_preexec DEBUG
 PROMPT_COMMAND="__ask_precmd${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
