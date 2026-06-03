@@ -164,7 +164,7 @@ __ask_preexec() {
 __ask_precmd() {
   local _ec=$?
   [[ -d "$HOME/.ask" ]] || return
-  echo "$_ec" > "$HOME/.ask/last_exit"
+  [[ -n "$__ask_seen" ]] && echo "$_ec" > "$HOME/.ask/last_exit"
   unset __ask_seen
 }
 trap __ask_preexec DEBUG
@@ -177,13 +177,15 @@ __ask_preexec() {
   [[ -d "$HOME/.ask" ]] || return
   [[ "$1" == fix || "$1" == "fix "* ]] && return
   [[ "$1" == ask || "$1" == "ask "* ]] && return
+  __ask_seen=1
   print -r -- "$1"   > "$HOME/.ask/last_command"
   print -r -- "$PWD" > "$HOME/.ask/last_cwd"
 }
 __ask_precmd() {
   local _ec=$?
   [[ -d "$HOME/.ask" ]] || return
-  print -r -- "$_ec" > "$HOME/.ask/last_exit"
+  [[ -n "$__ask_seen" ]] && print -r -- "$_ec" > "$HOME/.ask/last_exit"
+  unset __ask_seen
 }
 autoload -Uz add-zsh-hook
 add-zsh-hook preexec __ask_preexec

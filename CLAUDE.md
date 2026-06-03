@@ -16,7 +16,7 @@ CLI tool: pipe text to a local LLM (Ollama) from the terminal. Two commands — 
 ## Conventions
 - Config stored in `~/.ask/config` (key=value)
 - Binary installed to `~/.local/bin/` via symlink
-- `ask` subcommand default; `fix` diagnoses last failed command (reads sidecar files `~/.ask/last_command`, `~/.ask/last_exit`, `~/.ask/last_cwd`)
+- `ask` subcommand default; `fix` diagnoses last failed command (reads sidecar files `~/.ask/last_command`, `~/.ask/last_exit`, `~/.ask/last_cwd`; optionally `~/.ask/last_output` if present)
 
 ## Layout
 - `client/` — Go CLI source (ask.go, fix.go, config.go, stream.go, main.go)
