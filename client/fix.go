@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -13,6 +14,8 @@ Be extremely concise. No preamble. Format: problem on one line, then the fix in 
 
 const lastOutputFile = ".ask/last_output"
 const maxFixLines = 50
+
+var ansiEscapeRe = regexp.MustCompile(`\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07]*\x07|[^[\]])|\r`)
 
 func runFix(cfg Config) error {
 	home, err := os.UserHomeDir()
@@ -30,7 +33,7 @@ func runFix(cfg Config) error {
 		return fmt.Errorf("could not read last output: %w", err)
 	}
 
-	content := strings.TrimSpace(string(data))
+	content := ansiEscapeRe.ReplaceAllString(strings.TrimSpace(string(data)), "")
 	if content == "" {
 		return fmt.Errorf("last command produced no output to diagnose")
 	}
@@ -42,6 +45,8 @@ func runFix(cfg Config) error {
 		content = strings.Join(lines, "\n")
 	}
 
+	fmt.Fprintf(os.Stderr, "%s─── captured stderr ───%s\n%s\n%s──────────────────────%s\n\n",
+		ansiDim, ansiReset, content, ansiDim, ansiReset)
 	fmt.Fprintf(os.Stderr, "%sDiagnosing last command output...%s\n\n", ansiDim, ansiReset)
 	return stream(cfg, fixSystem, "Here is the terminal output to diagnose:\n\n"+content)
 }

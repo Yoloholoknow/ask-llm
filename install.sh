@@ -82,6 +82,19 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
     echo -n "> "
     read -r host_input
     host_input="${host_input:-http://localhost:11434}"
+    # Ensure scheme is present
+    if [[ "$host_input" != http://* && "$host_input" != https://* ]]; then
+      host_input="http://${host_input}"
+    fi
+    # Ensure port is present for http:// only (https reverse proxies use their own port)
+    if [[ "$host_input" == http://* ]]; then
+      host_rest="${host_input#http://}"
+      host_authority="${host_rest%%/*}"
+      if [[ "$host_authority" != *:* ]]; then
+        host_path="${host_rest#$host_authority}"
+        host_input="http://${host_authority}:11434${host_path}"
+      fi
+    fi
   else
     host_input="http://localhost:11434"
     if command -v docker &>/dev/null && [[ -f "$REPO_DIR/docker-compose.yml" ]]; then
@@ -155,21 +168,27 @@ fi
 # ── 5. Shell hooks ────────────────────────────────────────────────────────────
 HOOK_BASH='
 # ask-llm: capture last command output for `fix`
-__ask_last_cmd_output=""
 __ask_capture() {
   export __ask_last_exit=$?
   if [[ -n "$__ask_cmd_running" ]]; then
-    exec 3>&- 2>/dev/null || true
+    exec 2>/dev/tty
+    wait "$__ask_tee_pid" 2>/dev/null; unset __ask_tee_pid
     if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
       mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
+    else
+      rm -f "$HOME/.ask/.cmd_buf"
     fi
     unset __ask_cmd_running
   fi
 }
 __ask_preexec() {
+  [[ -d "$HOME/.ask" ]] || return
+  [[ -t 2 ]] || return
   [[ "$BASH_COMMAND" == "__ask_capture" ]] && return
+  [[ -n "$__ask_cmd_running" ]] && return
   __ask_cmd_running=1
-  exec 3>&2 2>"$HOME/.ask/.cmd_buf"
+  exec 2> >(tee "$HOME/.ask/.cmd_buf" >/dev/tty)
+  __ask_tee_pid=$!
 }
 trap __ask_preexec DEBUG
 PROMPT_COMMAND="__ask_capture${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
@@ -177,17 +196,31 @@ PROMPT_COMMAND="__ask_capture${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
 
 HOOK_ZSH='
 # ask-llm: capture last command output for `fix`
-__ask_capturing=0
 __ask_preexec() {
+  [[ -d "$HOME/.ask" ]] || return
+  [[ -t 2 ]] || return
+  (( __ask_capturing )) && return
   __ask_capturing=1
-  exec 3>&2 2>"$HOME/.ask/.cmd_buf"
+  local _fifo="$HOME/.ask/.cmd_fifo.$$"
+  rm -f "$_fifo"
+  mkfifo -m 600 "$_fifo" 2>/dev/null || { __ask_capturing=0; return; }
+  tee "$HOME/.ask/.cmd_buf" <"$_fifo" >/dev/tty &
+  __ask_tee_pid=$!
+  __ask_fifo="$_fifo"
+  exec 2>"$_fifo"
 }
 __ask_precmd() {
-  if [[ $__ask_capturing -eq 1 ]]; then
+  if (( __ask_capturing )); then
     __ask_capturing=0
-    exec 2>&3 3>&-
+    exec 2>/dev/tty
+    wait "$__ask_tee_pid" 2>/dev/null
+    unset __ask_tee_pid
+    rm -f "${__ask_fifo:-}"
+    unset __ask_fifo
     if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
       mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
+    else
+      rm -f "$HOME/.ask/.cmd_buf"
     fi
   fi
 }
@@ -198,27 +231,45 @@ add-zsh-hook precmd __ask_precmd
 
 PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
 MARKER='# ask-llm hooks'
+END_MARKER='# end ask-llm hooks'
 
 install_hooks() {
   local rc_file="$1"
   local hook="$2"
+  local replaced=0
 
   if [[ ! -f "$rc_file" ]]; then
     return
   fi
 
+  # Strip existing managed block so reinstall always upgrades to the latest hooks.
   if grep -q "$MARKER" "$rc_file" 2>/dev/null; then
-    echo -e "${GREEN}✓ Hooks already in $rc_file${RESET}"
-    return
+    local tmp
+    tmp="$(mktemp)"
+    awk -v marker="$MARKER" -v end_marker="$END_MARKER" -v path_line="$PATH_LINE" '
+      /^[[:space:]]*$/ && found { next }
+      $0 == marker { found=1; next }
+      found && $0 == path_line { found=0; next }
+      $0 == end_marker { found=0; next }
+      found { next }
+      { print }
+    ' "$rc_file" > "$tmp"
+    mv "$tmp" "$rc_file"
+    replaced=1
   fi
 
   {
-    echo ""
     echo "$MARKER"
+    echo ""
     echo "$hook"
     echo "$PATH_LINE"
+    echo "$END_MARKER"
   } >> "$rc_file"
-  echo -e "${GREEN}✓ Hooks added to $rc_file${RESET}"
+  if (( replaced )); then
+    echo -e "${GREEN}✓ Hooks updated in $rc_file${RESET}"
+  else
+    echo -e "${GREEN}✓ Hooks added to $rc_file${RESET}"
+  fi
 }
 
 install_hooks "$HOME/.bashrc" "$HOOK_BASH"
