@@ -82,6 +82,15 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
     echo -n "> "
     read -r host_input
     host_input="${host_input:-http://localhost:11434}"
+    # Ensure scheme is present
+    if [[ "$host_input" != http://* && "$host_input" != https://* ]]; then
+      host_input="http://${host_input}"
+    fi
+    # Ensure port is present (default 11434); strip scheme to check for colon
+    host_bare="${host_input#http://}"; host_bare="${host_bare#https://}"
+    if [[ "$host_bare" != *:* ]]; then
+      host_input="${host_input}:11434"
+    fi
   else
     host_input="http://localhost:11434"
     if command -v docker &>/dev/null && [[ -f "$REPO_DIR/docker-compose.yml" ]]; then
@@ -160,7 +169,6 @@ __ask_capture() {
   if [[ -n "$__ask_cmd_running" ]]; then
     exec 2>/dev/tty
     if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
-      command cat "$HOME/.ask/.cmd_buf" >/dev/tty
       mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
     else
       rm -f "$HOME/.ask/.cmd_buf"
@@ -174,7 +182,7 @@ __ask_preexec() {
   [[ "$BASH_COMMAND" == "__ask_capture" ]] && return
   [[ -n "$__ask_cmd_running" ]] && return
   __ask_cmd_running=1
-  exec 2>"$HOME/.ask/.cmd_buf"
+  exec 2> >(tee "$HOME/.ask/.cmd_buf" >/dev/tty)
 }
 trap __ask_preexec DEBUG
 PROMPT_COMMAND="__ask_capture${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
@@ -187,14 +195,13 @@ __ask_preexec() {
   [[ -t 2 ]] || return
   (( __ask_capturing )) && return
   __ask_capturing=1
-  exec 2>"$HOME/.ask/.cmd_buf"
+  exec 2> >(tee "$HOME/.ask/.cmd_buf" >/dev/tty)
 }
 __ask_precmd() {
   if (( __ask_capturing )); then
     __ask_capturing=0
     exec 2>/dev/tty
     if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
-      command cat "$HOME/.ask/.cmd_buf" >/dev/tty
       mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
     else
       rm -f "$HOME/.ask/.cmd_buf"
