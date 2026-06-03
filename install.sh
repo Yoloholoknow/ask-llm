@@ -169,25 +169,30 @@ fi
 HOOK_BASH='
 # ask-llm: capture last command output for `fix`
 __ask_capture() {
-  export __ask_last_exit=$?
+  local _ec=$?
   if [[ -n "$__ask_cmd_running" ]]; then
-    exec 2>/dev/tty
+    exec 1>/dev/tty 2>/dev/tty
     wait "$__ask_tee_pid" 2>/dev/null; unset __ask_tee_pid
     if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
       mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
     else
       rm -f "$HOME/.ask/.cmd_buf"
     fi
+    echo "$_ec" > "$HOME/.ask/last_exit"
+    [[ -f "$HOME/.ask/.cmd_line" ]] && mv "$HOME/.ask/.cmd_line" "$HOME/.ask/last_command"
+    [[ -f "$HOME/.ask/.cmd_cwd" ]]  && mv "$HOME/.ask/.cmd_cwd"  "$HOME/.ask/last_cwd"
     unset __ask_cmd_running
   fi
 }
 __ask_preexec() {
   [[ -d "$HOME/.ask" ]] || return
-  [[ -t 2 ]] || return
+  [[ -t 1 && -t 2 ]] || return
   [[ "$BASH_COMMAND" == "__ask_capture" ]] && return
   [[ -n "$__ask_cmd_running" ]] && return
   __ask_cmd_running=1
-  exec 2> >(tee "$HOME/.ask/.cmd_buf" >/dev/tty)
+  echo "$BASH_COMMAND" > "$HOME/.ask/.cmd_line"
+  echo "$PWD" > "$HOME/.ask/.cmd_cwd"
+  exec 1> >(tee "$HOME/.ask/.cmd_buf" >/dev/tty) 2>&1
   __ask_tee_pid=$!
 }
 trap __ask_preexec DEBUG
@@ -198,21 +203,25 @@ HOOK_ZSH='
 # ask-llm: capture last command output for `fix`
 __ask_preexec() {
   [[ -d "$HOME/.ask" ]] || return
-  [[ -t 2 ]] || return
+  [[ -t 1 && -t 2 ]] || return
   (( __ask_capturing )) && return
   __ask_capturing=1
+  # record command and cwd before any fd juggling
+  print -r -- "$1" > "$HOME/.ask/.cmd_line"
+  print -r -- "$PWD" > "$HOME/.ask/.cmd_cwd"
   local _fifo="$HOME/.ask/.cmd_fifo.$$"
   rm -f "$_fifo"
   mkfifo -m 600 "$_fifo" 2>/dev/null || { __ask_capturing=0; return; }
   tee "$HOME/.ask/.cmd_buf" <"$_fifo" >/dev/tty &
   __ask_tee_pid=$!
   __ask_fifo="$_fifo"
-  exec 2>"$_fifo"
+  exec 1>"$_fifo" 2>"$_fifo"
 }
 __ask_precmd() {
+  local _ec=$?
   if (( __ask_capturing )); then
     __ask_capturing=0
-    exec 2>/dev/tty
+    exec 1>/dev/tty 2>/dev/tty
     wait "$__ask_tee_pid" 2>/dev/null
     unset __ask_tee_pid
     rm -f "${__ask_fifo:-}"
@@ -222,12 +231,24 @@ __ask_precmd() {
     else
       rm -f "$HOME/.ask/.cmd_buf"
     fi
+    print -r -- "$_ec" > "$HOME/.ask/last_exit"
+    [[ -f "$HOME/.ask/.cmd_line" ]] && mv "$HOME/.ask/.cmd_line" "$HOME/.ask/last_command"
+    [[ -f "$HOME/.ask/.cmd_cwd" ]]  && mv "$HOME/.ask/.cmd_cwd"  "$HOME/.ask/last_cwd"
   fi
 }
 autoload -Uz add-zsh-hook
 add-zsh-hook preexec __ask_preexec
 add-zsh-hook precmd __ask_precmd
 '
+
+# If the command is named 'ask', append an unalias so it wins over the
+# oh-my-zsh web-search plugin alias (alias ask='web_search ask').
+# This is safe — the managed block is stripped+rewritten on each reinstall.
+if [[ "$cmd_name" == "ask" ]]; then
+  HOOK_ZSH+='
+# clear oh-my-zsh web-search alias that would shadow this command
+unalias ask 2>/dev/null || true'
+fi
 
 PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
 MARKER='# ask-llm hooks'
