@@ -26,8 +26,8 @@ Pick based on how much RAM you can spare. The model needs to fit entirely in RAM
 
 | Model | Family / gen | Download | Runtime RAM | Type | Best for |
 |---|---|---|---|---|---|
-| `gemma3:1b` | Gemma 3 | 815 MB | ~1.2 GB | instruct | Weakest hardware / max speed |
-| `qwen3.5:0.8b` | Qwen 3.5 ✦ | 1.0 GB | ~1.4 GB | think→off | **Pi 4 / 4 GB RAM — default** |
+| `gemma3:1b` | Gemma 3 | 815 MB | ~1.2 GB | instruct | **Pi 4 / 4 GB RAM — default** — best instruction following + speed |
+| `qwen3.5:0.8b` | Qwen 3.5 ✦ | 1.0 GB | ~1.4 GB | think→off | Thinking mode support; slower, lower IFEval than gemma3:1b |
 | `qwen3.5:2b-q4_K_M` | Qwen 3.5 ✦ | 1.9 GB | ~2.6 GB | think→off | Quality lean, still fits 4 GB |
 | `llama3.2:3b` | Llama 3.2 | 2.0 GB | ~2.7 GB | instruct | General knowledge, laptop / 8 GB Pi |
 | `granite4.1:3b` | Granite 4.1 | 2.1 GB | ~2.8 GB | instruct | Tools / RAG / code, non-Qwen |
@@ -93,7 +93,7 @@ bash install.sh
 
 The installer will:
 1. Build the Go binary and install `ask` + `fix` to `~/.local/bin/`
-2. Ask which model you want (or use the default `qwen3.5:0.8b`)
+2. Ask which model you want (or use the default `gemma3:1b`)
 3. Start Ollama via Docker Compose (pulls the model on first run)
 4. Write your config to `~/.ask/config`
 5. Add shell hooks to `.zshrc` / `.bashrc` for `fix` to work
@@ -126,7 +126,7 @@ ASK_MODEL=qwen3.5:9b ask explain what a mutex is
 # macOS / Linux
 curl -fsSL https://ollama.com/install.sh | sh
 
-ollama pull qwen3.5:0.8b
+ollama pull gemma3:1b
 # Ollama runs as a background service automatically
 
 # Then install just the client
@@ -190,7 +190,7 @@ nano .env
 For a Pi 4 with 4 GB RAM, `.env` should look like:
 
 ```bash
-ASK_MODEL=qwen3.5:0.8b
+ASK_MODEL=gemma3:1b
 OLLAMA_BIND=0.0.0.0        # expose on network so Tailscale can reach it
 ```
 
@@ -295,7 +295,7 @@ OLLAMA_HOST=http://localhost:11434       # local
 
 # Which model to use (must be pulled on the server)
 # Run: docker exec ask-ollama ollama list
-MODEL=qwen3.5:0.8b
+MODEL=gemma3:1b
 # THINK=false  # set to true to enable the reasoning trace (see Thinking mode above)
 ```
 
@@ -367,21 +367,22 @@ docker stats ask-ollama   # check RAM — if near the limit, model is swapping
 **Model not found**
 ```bash
 docker exec ask-ollama ollama list
-docker exec ask-ollama ollama pull qwen3.5:0.8b
+docker exec ask-ollama ollama pull gemma3:1b
 ```
 
-**`fix` says no output captured**
+**`fix` says no command captured yet**
 
-Reload your shell after install: `source ~/.zshrc`. The hook captures stderr — for programs that write errors to stdout, pipe manually:
-```bash
-your-command 2>&1 | tee ~/.ask/last_output; fix
-```
+Reload your shell after install: `source ~/.zshrc`. The hook records the last
+command, exit code, and working directory automatically — no output capture needed.
+`fix` diagnoses from that metadata.
 
 **Fish shell**
 
-Fish doesn't support the `exec 2> >(tee ...)` process-substitution pattern needed for
-live stderr tee. Auto-capture isn't available. Use manual capture per command instead:
+Fish doesn't support the `preexec`/`precmd` hook pattern used by the installer.
+Shell hooks won't be added automatically. You can run `fix` after any command
+and it will use whatever metadata was last written by a bash/zsh session, or
+pass context directly:
 
 ```fish
-your-command 2>&1 | tee ~/.ask/last_output; fix
+your-command; fix
 ```

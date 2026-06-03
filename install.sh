@@ -39,7 +39,6 @@ echo -e "${GREEN}✓ Installed: $INSTALL_DIR/fix (symlink)${RESET}"
 
 # ── 4. Config ─────────────────────────────────────────────────────────────────
 mkdir -p "$CONFIG_DIR"
-touch "$LAST_OUTPUT"
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
   echo ""
@@ -151,78 +150,40 @@ fi
 
 # ── 5. Shell hooks ────────────────────────────────────────────────────────────
 HOOK_BASH='
-# ask-llm: capture last command output for `fix`
-__ask_capture() {
-  local _ec=$?
-  if [[ -n "$__ask_cmd_running" ]]; then
-    exec 1>/dev/tty 2>/dev/tty
-    wait "$__ask_tee_pid" 2>/dev/null; unset __ask_tee_pid
-    if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
-      mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
-    else
-      rm -f "$HOME/.ask/.cmd_buf"
-    fi
-    echo "$_ec" > "$HOME/.ask/last_exit"
-    [[ -f "$HOME/.ask/.cmd_line" ]] && mv "$HOME/.ask/.cmd_line" "$HOME/.ask/last_command"
-    [[ -f "$HOME/.ask/.cmd_cwd" ]]  && mv "$HOME/.ask/.cmd_cwd"  "$HOME/.ask/last_cwd"
-    unset __ask_cmd_running
-  fi
-}
+# ask-llm: record last command metadata for `fix`
 __ask_preexec() {
   [[ -d "$HOME/.ask" ]] || return
-  [[ -t 1 && -t 2 ]] || return
-  [[ "$BASH_COMMAND" == "__ask_capture" ]] && return
-  [[ -n "$__ask_cmd_running" ]] && return
-  __ask_cmd_running=1
-  echo "$BASH_COMMAND" > "$HOME/.ask/.cmd_line"
-  echo "$PWD" > "$HOME/.ask/.cmd_cwd"
-  exec 1> >(tee "$HOME/.ask/.cmd_buf" >/dev/tty) 2>&1
-  __ask_tee_pid=$!
-}
-trap __ask_preexec DEBUG
-PROMPT_COMMAND="__ask_capture${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
-'
-
-HOOK_ZSH='
-# ask-llm: capture last command output for `fix`
-__ask_preexec() {
-  [[ -d "$HOME/.ask" ]] || return
-  [[ -t 1 && -t 2 ]] || return
-  (( __ask_capturing )) && return
-  __ask_capturing=1
-  # record command and cwd before any fd juggling
-  print -r -- "$1" > "$HOME/.ask/.cmd_line"
-  print -r -- "$PWD" > "$HOME/.ask/.cmd_cwd"
-  local _fifo="$HOME/.ask/.cmd_fifo.$$"
-  rm -f "$_fifo"
-  mkfifo -m 600 "$_fifo" 2>/dev/null || { __ask_capturing=0; return; }
-  tee "$HOME/.ask/.cmd_buf" <"$_fifo" >/dev/tty &
-  __ask_tee_pid=$!
-  __ask_fifo="$_fifo"
-  exec 1>"$_fifo" 2>"$_fifo"
+  [[ "$BASH_COMMAND" == __ask_precmd* ]] && return
+  [[ -n "$__ask_seen" ]] && return
+  __ask_seen=1
+  echo "$BASH_COMMAND" > "$HOME/.ask/last_command"
+  echo "$PWD"          > "$HOME/.ask/last_cwd"
 }
 __ask_precmd() {
   local _ec=$?
-  if (( __ask_capturing )); then
-    __ask_capturing=0
-    exec 1>/dev/tty 2>/dev/tty
-    wait "$__ask_tee_pid" 2>/dev/null
-    unset __ask_tee_pid
-    rm -f "${__ask_fifo:-}"
-    unset __ask_fifo
-    if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
-      mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
-    else
-      rm -f "$HOME/.ask/.cmd_buf"
-    fi
-    print -r -- "$_ec" > "$HOME/.ask/last_exit"
-    [[ -f "$HOME/.ask/.cmd_line" ]] && mv "$HOME/.ask/.cmd_line" "$HOME/.ask/last_command"
-    [[ -f "$HOME/.ask/.cmd_cwd" ]]  && mv "$HOME/.ask/.cmd_cwd"  "$HOME/.ask/last_cwd"
-  fi
+  [[ -d "$HOME/.ask" ]] || return
+  echo "$_ec" > "$HOME/.ask/last_exit"
+  unset __ask_seen
+}
+trap __ask_preexec DEBUG
+PROMPT_COMMAND="__ask_precmd${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
+'
+
+HOOK_ZSH='
+# ask-llm: record last command metadata for `fix`
+__ask_preexec() {
+  [[ -d "$HOME/.ask" ]] || return
+  print -r -- "$1"   > "$HOME/.ask/last_command"
+  print -r -- "$PWD" > "$HOME/.ask/last_cwd"
+}
+__ask_precmd() {
+  local _ec=$?
+  [[ -d "$HOME/.ask" ]] || return
+  print -r -- "$_ec" > "$HOME/.ask/last_exit"
 }
 autoload -Uz add-zsh-hook
 add-zsh-hook preexec __ask_preexec
-add-zsh-hook precmd __ask_precmd
+add-zsh-hook precmd  __ask_precmd
 '
 
 # If the command is named 'ask', append an unalias so it wins over the

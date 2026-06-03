@@ -4,7 +4,7 @@ CLI tool: pipe text to a local LLM (Ollama) from the terminal. Two commands — 
 
 ## Stack
 - Backend: Go 1.26 (`client/` — single binary)
-- Inference: Ollama (Docker, default model `qwen3.5:0.8b`)
+- Inference: Ollama (Docker, default model `gemma3:1b`)
 - No frontend, no database
 
 ## Commands
