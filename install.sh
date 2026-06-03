@@ -201,14 +201,22 @@ __ask_preexec() {
   [[ -t 2 ]] || return
   (( __ask_capturing )) && return
   __ask_capturing=1
-  exec 2> >(tee "$HOME/.ask/.cmd_buf" >/dev/tty)
+  local _fifo="$HOME/.ask/.cmd_fifo.$$"
+  rm -f "$_fifo"
+  mkfifo -m 600 "$_fifo" 2>/dev/null || { __ask_capturing=0; return; }
+  tee "$HOME/.ask/.cmd_buf" <"$_fifo" >/dev/tty &
   __ask_tee_pid=$!
+  __ask_fifo="$_fifo"
+  exec 2>"$_fifo"
 }
 __ask_precmd() {
   if (( __ask_capturing )); then
     __ask_capturing=0
     exec 2>/dev/tty
-    wait "$__ask_tee_pid" 2>/dev/null; unset __ask_tee_pid
+    wait "$__ask_tee_pid" 2>/dev/null
+    unset __ask_tee_pid
+    rm -f "${__ask_fifo:-}"
+    unset __ask_fifo
     if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
       mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
     else
