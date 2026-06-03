@@ -22,34 +22,8 @@ if ! command -v go &>/dev/null; then
   exit 1
 fi
 
-# ── 2. Choose command name ────────────────────────────────────────────────────
-echo ""
-echo "What command name do you want? (default: ask)"
-echo -e "${DIM}  Alternatives if 'ask' is taken: ai, q, llm${RESET}"
-echo -e "${DIM}  Note: oh-my-zsh web-search plugin aliases 'ask' by default${RESET}"
-echo -n "> "
-read -r cmd_name
-cmd_name="${cmd_name:-ask}"
-cmd_name="$(echo "$cmd_name" | tr -d '[:space:]')"
-
-# validate — alphanumeric + dash/underscore only
-if ! [[ "$cmd_name" =~ ^[a-zA-Z][a-zA-Z0-9_-]*$ ]]; then
-  echo -e "${YELLOW}Invalid name — using 'ask' instead${RESET}"
-  cmd_name="ask"
-fi
-
-# check for conflicts in the current shell
-if alias "$cmd_name" &>/dev/null 2>&1; then
-  existing="$(alias "$cmd_name" 2>/dev/null)"
-  echo -e "${YELLOW}Warning: '$cmd_name' is already aliased to: $existing${RESET}"
-  echo "Enter a different name, or press Enter to keep '$cmd_name' (you'll need to remove the alias manually):"
-  echo -n "> "
-  read -r alt_name
-  alt_name="$(echo "$alt_name" | tr -d '[:space:]')"
-  if [[ -n "$alt_name" ]]; then
-    cmd_name="$alt_name"
-  fi
-fi
+# ── 2. Command name ───────────────────────────────────────────────────────────
+cmd_name="ask"
 
 # ── 3. Build binary ───────────────────────────────────────────────────────────
 echo ""
@@ -65,7 +39,7 @@ echo -e "${GREEN}✓ Installed: $INSTALL_DIR/fix (symlink)${RESET}"
 
 # ── 4. Config ─────────────────────────────────────────────────────────────────
 mkdir -p "$CONFIG_DIR"
-touch "$LAST_OUTPUT"
+rm -f "$LAST_OUTPUT"
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
   echo ""
@@ -105,16 +79,20 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
       if [[ "${start_docker:-Y}" =~ ^[Yy]$ ]]; then
         echo ""
         echo "Which model? (press Enter for default)"
-        echo -e "${DIM}  ~1.5 GB free → qwen3.5:0.8b          (default — fast + Qwen quality)${RESET}"
+        echo -e "${DIM}  Pi 4 (4 GB) — CPU inference, ~3–8 tok/s for 1B models:${RESET}"
+        echo -e "${DIM}  ~1.2 GB free → gemma3:1b              (recommended — best quality/speed at 1B)${RESET}"
+        echo -e "${DIM}  ~1.4 GB free → qwen3.5:0.8b           (alternative; supports thinking mode)${RESET}"
+        echo -e "${DIM}  ~0.9 GB free → llama3.2:1b            (strong instruction following)${RESET}"
+        echo -e "${DIM}${RESET}"
+        echo -e "${DIM}  More RAM / faster hardware:${RESET}"
         echo -e "${DIM}  ~3 GB free   → qwen3.5:2b-q4_K_M     (better quality, still fits 4 GB Pi)${RESET}"
         echo -e "${DIM}  ~3 GB free   → llama3.2:3b            (instruct, strong general knowledge)${RESET}"
-        echo -e "${DIM}  ~3 GB free   → granite4.1:3b          (instruct, tools + RAG, non-Qwen)${RESET}"
         echo -e "${DIM}  ~4 GB free   → qwen3.5:4b${RESET}"
         echo -e "${DIM}  ~8 GB free   → qwen3.5:9b             (GPU recommended)${RESET}"
-        echo -e "${DIM}  See .env.example for the full table${RESET}"
+        echo -e "${DIM}  See .env.example for full table with Pi 4 tok/s estimates${RESET}"
         echo -n "> "
         read -r model_input
-        model_input="${model_input:-qwen3.5:0.8b}"
+        model_input="${model_input:-gemma3:1b}"
 
         cp "$REPO_DIR/.env.example" "$REPO_DIR/.env" 2>/dev/null || true
         sed -i "s|^ASK_MODEL=.*|ASK_MODEL=${model_input}|" "$REPO_DIR/.env"
@@ -136,11 +114,11 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
   host_input="${host_input%/}"
 
   echo ""
-  echo "Which model should the client use? (press Enter for default: qwen3.5:0.8b)"
+  echo "Which model should the client use? (press Enter for default: gemma3:1b)"
   echo -e "${DIM}  Must match a model pulled on your Ollama server${RESET}"
   echo -n "> "
   read -r client_model
-  client_model="${client_model:-qwen3.5:0.8b}"
+  client_model="${client_model:-gemma3:1b}"
 
   cat > "$CONFIG_FILE" <<EOF
 # ask-llm configuration
@@ -152,9 +130,15 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
 #
 # MODEL: must match a model pulled on your Ollama server.
 # Run 'ollama list' on the server to see what's available.
-# See .env.example in the repo for the full model comparison table.
+# See .env.example in the repo for the full table with Pi 4 tok/s estimates.
+#
+# Pi 4 recommended: gemma3:1b or llama3.2:1b (~4–6 tok/s, good quality)
+# qwen3.5:0.8b is an alternative if you want thinking mode support.
 #
 # THINK=false  # set to true to enable reasoning trace on thinking models (qwen3.5 etc.)
+#
+# NUM_CTX=1024  # context window size; 1024 is the default and halves bandwidth
+#               # vs Ollama's 2048 default — meaningful speed gain on Pi 4 CPU
 
 OLLAMA_HOST=${host_input}
 MODEL=${client_model}
@@ -167,67 +151,61 @@ fi
 
 # ── 5. Shell hooks ────────────────────────────────────────────────────────────
 HOOK_BASH='
-# ask-llm: capture last command output for `fix`
-__ask_capture() {
-  export __ask_last_exit=$?
-  if [[ -n "$__ask_cmd_running" ]]; then
-    exec 2>/dev/tty
-    wait "$__ask_tee_pid" 2>/dev/null; unset __ask_tee_pid
-    if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
-      mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
-    else
-      rm -f "$HOME/.ask/.cmd_buf"
-    fi
-    unset __ask_cmd_running
-  fi
-}
+# ask-llm: record last command metadata for `fix`
 __ask_preexec() {
   [[ -d "$HOME/.ask" ]] || return
-  [[ -t 2 ]] || return
-  [[ "$BASH_COMMAND" == "__ask_capture" ]] && return
-  [[ -n "$__ask_cmd_running" ]] && return
-  __ask_cmd_running=1
-  exec 2> >(tee "$HOME/.ask/.cmd_buf" >/dev/tty)
-  __ask_tee_pid=$!
+  [[ "$BASH_COMMAND" == __ask_precmd* ]] && return
+  [[ "$BASH_COMMAND" == fix || "$BASH_COMMAND" == "fix "* ]] && return
+  [[ "$BASH_COMMAND" == ask || "$BASH_COMMAND" == "ask "* ]] && return
+  [[ -n "$__ask_seen" ]] && return
+  __ask_seen=1
+  __ask_cwd="$PWD"
+}
+__ask_precmd() {
+  local _ec=$?
+  [[ -d "$HOME/.ask" ]] || return
+  if [[ -n "$__ask_seen" ]]; then
+    local _cmd
+    _cmd=$(HISTTIMEFORMAT="" history 1 | sed "s/^[[:space:]]*[0-9]*[[:space:]]*//")
+    echo "$_cmd"       > "$HOME/.ask/last_command"
+    echo "$__ask_cwd"  > "$HOME/.ask/last_cwd"
+    echo "$_ec"        > "$HOME/.ask/last_exit"
+  fi
+  unset __ask_seen __ask_cwd
 }
 trap __ask_preexec DEBUG
-PROMPT_COMMAND="__ask_capture${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
+PROMPT_COMMAND="__ask_precmd${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
 '
 
 HOOK_ZSH='
-# ask-llm: capture last command output for `fix`
+# ask-llm: record last command metadata for `fix`
 __ask_preexec() {
   [[ -d "$HOME/.ask" ]] || return
-  [[ -t 2 ]] || return
-  (( __ask_capturing )) && return
-  __ask_capturing=1
-  local _fifo="$HOME/.ask/.cmd_fifo.$$"
-  rm -f "$_fifo"
-  mkfifo -m 600 "$_fifo" 2>/dev/null || { __ask_capturing=0; return; }
-  tee "$HOME/.ask/.cmd_buf" <"$_fifo" >/dev/tty &
-  __ask_tee_pid=$!
-  __ask_fifo="$_fifo"
-  exec 2>"$_fifo"
+  [[ "$1" == fix || "$1" == "fix "* ]] && return
+  [[ "$1" == ask || "$1" == "ask "* ]] && return
+  __ask_seen=1
+  print -r -- "$1"   > "$HOME/.ask/last_command"
+  print -r -- "$PWD" > "$HOME/.ask/last_cwd"
 }
 __ask_precmd() {
-  if (( __ask_capturing )); then
-    __ask_capturing=0
-    exec 2>/dev/tty
-    wait "$__ask_tee_pid" 2>/dev/null
-    unset __ask_tee_pid
-    rm -f "${__ask_fifo:-}"
-    unset __ask_fifo
-    if [[ -s "$HOME/.ask/.cmd_buf" ]]; then
-      mv "$HOME/.ask/.cmd_buf" "$HOME/.ask/last_output"
-    else
-      rm -f "$HOME/.ask/.cmd_buf"
-    fi
-  fi
+  local _ec=$?
+  [[ -d "$HOME/.ask" ]] || return
+  [[ -n "$__ask_seen" ]] && print -r -- "$_ec" > "$HOME/.ask/last_exit"
+  unset __ask_seen
 }
 autoload -Uz add-zsh-hook
 add-zsh-hook preexec __ask_preexec
-add-zsh-hook precmd __ask_precmd
+add-zsh-hook precmd  __ask_precmd
 '
+
+# If the command is named 'ask', append an unalias so it wins over the
+# oh-my-zsh web-search plugin alias (alias ask='web_search ask').
+# This is safe — the managed block is stripped+rewritten on each reinstall.
+if [[ "$cmd_name" == "ask" ]]; then
+  HOOK_ZSH+='
+# clear oh-my-zsh web-search alias that would shadow this command
+unalias ask 2>/dev/null || true'
+fi
 
 PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
 MARKER='# ask-llm hooks'
