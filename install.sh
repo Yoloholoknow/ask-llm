@@ -86,10 +86,14 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
     if [[ "$host_input" != http://* && "$host_input" != https://* ]]; then
       host_input="http://${host_input}"
     fi
-    # Ensure port is present (default 11434); strip scheme to check for colon
-    host_bare="${host_input#http://}"; host_bare="${host_bare#https://}"
-    if [[ "$host_bare" != *:* ]]; then
-      host_input="${host_input}:11434"
+    # Ensure port is present for http:// only (https reverse proxies use their own port)
+    if [[ "$host_input" == http://* ]]; then
+      host_rest="${host_input#http://}"
+      host_authority="${host_rest%%/*}"
+      if [[ "$host_authority" != *:* ]]; then
+        host_path="${host_rest#$host_authority}"
+        host_input="http://${host_authority}:11434${host_path}"
+      fi
     fi
   else
     host_input="http://localhost:11434"
