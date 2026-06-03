@@ -22,34 +22,8 @@ if ! command -v go &>/dev/null; then
   exit 1
 fi
 
-# ── 2. Choose command name ────────────────────────────────────────────────────
-echo ""
-echo "What command name do you want? (default: ask)"
-echo -e "${DIM}  Alternatives if 'ask' is taken: ai, q, llm${RESET}"
-echo -e "${DIM}  Note: oh-my-zsh web-search plugin aliases 'ask' by default${RESET}"
-echo -n "> "
-read -r cmd_name
-cmd_name="${cmd_name:-ask}"
-cmd_name="$(echo "$cmd_name" | tr -d '[:space:]')"
-
-# validate — alphanumeric + dash/underscore only
-if ! [[ "$cmd_name" =~ ^[a-zA-Z][a-zA-Z0-9_-]*$ ]]; then
-  echo -e "${YELLOW}Invalid name — using 'ask' instead${RESET}"
-  cmd_name="ask"
-fi
-
-# check for conflicts in the current shell
-if alias "$cmd_name" &>/dev/null 2>&1; then
-  existing="$(alias "$cmd_name" 2>/dev/null)"
-  echo -e "${YELLOW}Warning: '$cmd_name' is already aliased to: $existing${RESET}"
-  echo "Enter a different name, or press Enter to keep '$cmd_name' (you'll need to remove the alias manually):"
-  echo -n "> "
-  read -r alt_name
-  alt_name="$(echo "$alt_name" | tr -d '[:space:]')"
-  if [[ -n "$alt_name" ]]; then
-    cmd_name="$alt_name"
-  fi
-fi
+# ── 2. Command name ───────────────────────────────────────────────────────────
+cmd_name="ask"
 
 # ── 3. Build binary ───────────────────────────────────────────────────────────
 echo ""
